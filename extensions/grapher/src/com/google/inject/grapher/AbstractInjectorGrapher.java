@@ -16,14 +16,18 @@
 
 package com.google.inject.grapher;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.google.inject.Binding;
 import com.google.inject.Injector;
 import com.google.inject.Key;
+import com.google.inject.spi.ExposedBinding;
+
 import java.io.IOException;
 import java.util.Iterator;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,7 +42,7 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
   private final AliasCreator aliasCreator;
   private final NodeCreator nodeCreator;
   private final EdgeCreator edgeCreator;
-
+  private final List <Binding> result = new LinkedList<Binding>();
   /** Parameters used to override default settings of the grapher. */
   public static final class GrapherParameters {
     private RootKeySetCreator rootKeySetCreator = new DefaultRootKeySetCreator();
@@ -214,11 +218,32 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
 
       if (!visitedKeys.contains(key)) {
         Binding<?> binding = injector.getBinding(key);
+        if(binding instanceof ExposedBinding) {
+        	createNewFile((ExposedBinding)binding);
+            /* Iterable<Binding<?>> bb;
+            bb = getBindings( 
+                ((ExposedBinding)binding).getPrivateElements().getInjector(), 
+                ImmutableSet.<Key<?>>of(key));
+            System.out.println("\n************************************** BB *************");
+            System.out.printf("   BINDINGS:%s\n", bb.toString());
+            for(Binding b:bb) {
+              bindings.add(b);
+              visitedKeys.add(b.getKey());
+            } */
+          }        
         bindings.add(binding);
         visitedKeys.add(key);
         keys.addAll(binding.acceptTargetVisitor(keyVisitor));
       }
     }
     return bindings;
+  }
+  
+  void createNewFile(ExposedBinding binding) {
+	  result.add(binding);
+	  // Injector injector = binding.getPrivateElements().getInjector();
+  }
+  public List <Binding> getPrivates() {
+	  return result;
   }
 }
