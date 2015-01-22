@@ -16,7 +16,6 @@
 
 package com.google.inject.grapher;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
@@ -28,7 +27,6 @@ import com.google.inject.spi.ExposedBinding;
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -154,10 +152,9 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
   private void createNodes(Iterable<Node> nodes, Map<NodeId, NodeId> aliases, int level) throws IOException {
     for (Node node : nodes) {
       NodeId originalId = node.getId();
-      System.out.printf("nodeid:%s\n", node.getId().toString());
       NodeId resolvedId = resolveAlias(aliases, originalId);
       node = node.copy(resolvedId);
-
+      
       // Only render nodes that aren't aliased to some other node.
       if (resolvedId.equals(originalId)) {
         if (node instanceof InterfaceNode) {
@@ -196,20 +193,16 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
   }
 
   private void createSubs() throws IOException {
-    
     Set<Key<?>> visitedKeys = Sets.newHashSet();
     while(! foundSubs.isEmpty()) {
       Iterator<Subgraph> iterator = foundSubs.iterator();
       Subgraph sub = iterator.next();
       iterator.remove();
       if (!visitedKeys.contains(sub.key)) {
-        System.out.printf("%s graph\n", sub.name);
         graphModule(sub.name , sub.injector, rootKeySetCreator.getRootKeys(sub.injector), 1);
         visitedKeys.add(sub.key);        
-      } else {
-        System.out.printf("%s skip\n", sub.name);
       }
-    } 
+    }
   }
   /**
    * Transitively resolves aliases. Given aliases (X to Y) and (Y to Z), it will return mappings
