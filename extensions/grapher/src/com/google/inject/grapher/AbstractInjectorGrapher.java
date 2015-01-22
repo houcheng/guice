@@ -26,6 +26,7 @@ import com.google.inject.Key;
 import com.google.inject.spi.ExposedBinding;
 
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
@@ -42,14 +43,17 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
   private final AliasCreator aliasCreator;
   private final NodeCreator nodeCreator;
   private final EdgeCreator edgeCreator;
-  private final List <Binding> result = new LinkedList<Binding>();
+  private final SubgraphCreator  subCreator;
+  private final HashSet<Subgraph> foundSubs;
+  private int idOffset = 0;
+  
   /** Parameters used to override default settings of the grapher. */
   public static final class GrapherParameters {
     private RootKeySetCreator rootKeySetCreator = new DefaultRootKeySetCreator();
     private AliasCreator aliasCreator = new ProviderAliasCreator();
     private NodeCreator nodeCreator = new DefaultNodeCreator();
     private EdgeCreator edgeCreator = new DefaultEdgeCreator();
-
+    private SubgraphCreator subCreator = new DefaultSubgraphCreator();
     public RootKeySetCreator getRootKeySetCreator() {
       return rootKeySetCreator;
     }
@@ -85,6 +89,14 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
       this.edgeCreator = edgeCreator;
       return this;
     }
+
+    public SubgraphCreator getSubCreator() {
+      return subCreator;
+    }
+    public GrapherParameters setSubCreator(SubgraphCreator subCreator) {
+      this.subCreator = subCreator;
+      return this;
+    }
   }
 
   public AbstractInjectorGrapher() {
@@ -96,6 +108,8 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
     this.aliasCreator = options.getAliasCreator();
     this.nodeCreator = options.getNodeCreator();
     this.edgeCreator = options.getEdgeCreator();
+    this.subCreator = options.getSubCreator(); 
+    this.foundSubs = new HashSet<Subgraph>();
   }
 
   @Override public final void graph(Injector injector) throws IOException {
@@ -104,14 +118,19 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
 
   @Override public final void graph(Injector injector, Set<Key<?>> root) throws IOException {
     reset();
-
-    Iterable<Binding<?>> bindings = getBindings(injector, root);
-    Map<NodeId, NodeId> aliases = resolveAliases(aliasCreator.createAliases(bindings));
-    createNodes(nodeCreator.getNodes(bindings), aliases);
-    createEdges(edgeCreator.getEdges(bindings), aliases);
+    graphModule(injector, root, 0);
+    createSubs();
     postProcess();
   }
 
+  private void graphModule(Injector injector, Set<Key<?>> root, int level) throws IOException {
+    Iterable<Binding<?>> bindings = getBindings(injector, root);
+    Map<NodeId, NodeId> aliases = resolveAliases(aliasCreator.createAliases(bindings));
+    createNodes(nodeCreator.getNodes(bindings), aliases, level);
+    createEdges(edgeCreator.getEdges(bindings), aliases, level);
+    appendSubs(subCreator.getSubs(bindings), aliases);
+  }
+  
   /** Resets the state of the grapher before rendering a new graph. */
   protected abstract void reset() throws IOException;
 
@@ -133,9 +152,10 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
   /** Performs any post processing required after all nodes and edges have been added. */
   protected abstract void postProcess() throws IOException;
 
-  private void createNodes(Iterable<Node> nodes, Map<NodeId, NodeId> aliases) throws IOException {
+  private void createNodes(Iterable<Node> nodes, Map<NodeId, NodeId> aliases, int level) throws IOException {
     for (Node node : nodes) {
       NodeId originalId = node.getId();
+      System.out.printf("nodeid:%s\n", node.getId().toString());
       NodeId resolvedId = resolveAlias(aliases, originalId);
       node = node.copy(resolvedId);
 
@@ -152,7 +172,7 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
     }
   }
 
-  private void createEdges(Iterable<Edge> edges, Map<NodeId, NodeId> aliases) throws IOException {
+  private void createEdges(Iterable<Edge> edges, Map<NodeId, NodeId> aliases, int level) throws IOException {
     for (Edge edge : edges) {
       edge = edge.copy(resolveAlias(aliases, edge.getFromId()),
           resolveAlias(aliases, edge.getToId()));
@@ -166,10 +186,33 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
     }
   }
 
+  private void appendSubs(Iterable<Subgraph> subs, Map<NodeId, NodeId> aliases) {
+    for(Subgraph sub: subs) {
+      foundSubs.add(sub);
+    }
+  }
+  
   private NodeId resolveAlias(Map<NodeId, NodeId> aliases, NodeId nodeId) {
     return aliases.containsKey(nodeId) ? aliases.get(nodeId) : nodeId;
   }
 
+  private void createSubs() throws IOException {
+    
+    Set<Key<?>> visitedKeys = Sets.newHashSet();
+    while(! foundSubs.isEmpty()) {
+      Iterator<Subgraph> iterator = foundSubs.iterator();
+      Subgraph sub = iterator.next();
+      iterator.remove();
+      if (!visitedKeys.contains(sub.key)) {
+        idOffset += 100;
+        System.out.printf("%s graph\n", sub.name);
+        graphModule(sub.injector, rootKeySetCreator.getRootKeys(sub.injector), 1);
+        visitedKeys.add(sub.key);        
+      } else {
+        System.out.printf("%s skip\n", sub.name);
+      }
+    } 
+  }
   /**
    * Transitively resolves aliases. Given aliases (X to Y) and (Y to Z), it will return mappings
    * (X to Z) and (Y to Z).
@@ -210,27 +253,15 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
     Set<Key<?>> visitedKeys = Sets.newHashSet();
     List<Binding<?>> bindings = Lists.newArrayList();
     TransitiveDependencyVisitor keyVisitor = new TransitiveDependencyVisitor();
-
     while (!keys.isEmpty()) {
       Iterator<Key<?>> iterator = keys.iterator();
       Key<?> key = iterator.next();
       iterator.remove();
-
       if (!visitedKeys.contains(key)) {
         Binding<?> binding = injector.getBinding(key);
-        if(binding instanceof ExposedBinding) {
-        	createNewFile((ExposedBinding)binding);
-            /* Iterable<Binding<?>> bb;
-            bb = getBindings( 
-                ((ExposedBinding)binding).getPrivateElements().getInjector(), 
-                ImmutableSet.<Key<?>>of(key));
-            System.out.println("\n************************************** BB *************");
-            System.out.printf("   BINDINGS:%s\n", bb.toString());
-            for(Binding b:bb) {
-              bindings.add(b);
-              visitedKeys.add(b.getKey());
-            } */
-          }        
+        //if(binding instanceof ExposedBinding) {
+        //	createNewFile((ExposedBinding)binding);
+        //  }        
         bindings.add(binding);
         visitedKeys.add(key);
         keys.addAll(binding.acceptTargetVisitor(keyVisitor));
@@ -238,12 +269,12 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
     }
     return bindings;
   }
-  
+  /**
   void createNewFile(ExposedBinding binding) {
 	  result.add(binding);
 	  // Injector injector = binding.getPrivateElements().getInjector();
   }
   public List <Binding> getPrivates() {
 	  return result;
-  }
+  }**/
 }

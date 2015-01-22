@@ -51,7 +51,10 @@ final class DefaultNodeCreator implements NodeCreator {
    */
   private static final class NodeVisitor
       extends DefaultBindingTargetVisitor<Object, Collection<Node>> {
-
+    String sub;
+    NodeVisitor() {
+      this.sub = "";
+    }
     /** Returns a new interface node for the given {@link Binding}. */
     private InterfaceNode newInterfaceNode(Binding<?> binding) {
       return new InterfaceNode(NodeId.newTypeId(binding.getKey()), binding.getSource());

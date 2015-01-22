@@ -40,5 +40,5 @@ public interface InjectorGrapher {
    * their transitive dependencies.
    */
   void graph(Injector injector, Set<Key<?>> root) throws IOException;
-  List <Binding> getPrivates();
+  // List <Binding> getPrivates();
 }

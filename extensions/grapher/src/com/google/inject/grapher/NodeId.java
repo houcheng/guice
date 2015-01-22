@@ -41,10 +41,12 @@ public final class NodeId {
 
   private final Key<?> key;
   private final NodeType nodeType;
+  // private final String sub;
 
   private NodeId(Key<?> key, NodeType nodeType) {
     this.key = key;
     this.nodeType = nodeType;
+    // this.sub = sub;
   }
 
   public static NodeId newTypeId(Key<?> key) {
@@ -72,6 +74,6 @@ public final class NodeId {
   }
 
   @Override public String toString() {
-    return "NodeId{nodeType=" + nodeType + " key=" + key + "}";
+    return "NodeId{nodeType=" + nodeType + " key=" + key + "}"; // " sub=" + sub+ 
   }
 }
