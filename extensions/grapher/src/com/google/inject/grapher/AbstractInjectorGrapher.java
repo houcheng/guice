@@ -45,7 +45,6 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
   private final EdgeCreator edgeCreator;
   private final SubgraphCreator  subCreator;
   private final HashSet<Subgraph> foundSubs;
-  private int idOffset = 0;
   
   /** Parameters used to override default settings of the grapher. */
   public static final class GrapherParameters {
@@ -118,16 +117,16 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
 
   @Override public final void graph(Injector injector, Set<Key<?>> root) throws IOException {
     reset();
-    graphModule(injector, root, 0);
+    graphModule("", injector, root, 0);
     createSubs();
     postProcess();
   }
 
-  private void graphModule(Injector injector, Set<Key<?>> root, int level) throws IOException {
+  private void graphModule(String subname, Injector injector, Set<Key<?>> root, int level) throws IOException {
     Iterable<Binding<?>> bindings = getBindings(injector, root);
     Map<NodeId, NodeId> aliases = resolveAliases(aliasCreator.createAliases(bindings));
-    createNodes(nodeCreator.getNodes(bindings), aliases, level);
-    createEdges(edgeCreator.getEdges(bindings), aliases, level);
+    createNodes(nodeCreator.getNodes(subname, bindings), aliases, level);
+    createEdges(edgeCreator.getEdges(subname, bindings), aliases, level);
     appendSubs(subCreator.getSubs(bindings), aliases);
   }
   
@@ -204,9 +203,8 @@ public abstract class AbstractInjectorGrapher implements InjectorGrapher {
       Subgraph sub = iterator.next();
       iterator.remove();
       if (!visitedKeys.contains(sub.key)) {
-        idOffset += 100;
         System.out.printf("%s graph\n", sub.name);
-        graphModule(sub.injector, rootKeySetCreator.getRootKeys(sub.injector), 1);
+        graphModule(sub.name , sub.injector, rootKeySetCreator.getRootKeys(sub.injector), 1);
         visitedKeys.add(sub.key);        
       } else {
         System.out.printf("%s skip\n", sub.name);
